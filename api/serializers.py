@@ -12,7 +12,7 @@ class IsCourseMemberValidator(object):
         self.user = None
 
     def __call__(self, course):
-        if not self.user.courses.filter(pk=course.pk):
+        if not self.user.courses_as_member.filter(pk=course.pk):
             message = 'Must be course member'
             raise serializers.ValidationError(message)
 
