@@ -204,10 +204,10 @@ class ServerStateViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         return ServerState.objects.filter(pk=1)
 
-    @list_route(permission_classes=[IsAdminUser])
-    def load_courses(self, request):
-        call_command('load_courses')
-
-    @list_route(permission_classes=[IsAdminUser])
-    def populate_data(self, request):
-        call_command('populate_data')
+    # @list_route(methods=['post'], permission_classes=[IsAdminUser])
+    # def load_courses(self, request):
+    #     call_command('load_courses')
+    #
+    # @list_route(methods=['post'], permission_classes=[IsAdminUser])
+    # def populate_data(self, request):
+    #     call_command('populate_data')
