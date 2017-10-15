@@ -143,8 +143,9 @@ class CourseSerializer(serializers.ModelSerializer):
 
 class GroupSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
-    creator = serializers.PrimaryKeyRelatedField(read_only=True)
-    members = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+    creator = UserSerializer(read_only=True)
+    members = serializers.PrimaryKeyRelatedField(queryset=UserProfile.objects.all(), many=True, required=False)
+    # members_data = UserSerializer(source='members', many=True, read_only=True)  # TODO: slow performance
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -153,6 +154,7 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ('id', 'name', 'course', 'creator', 'members')
+        read_only_fields = ('creator',)
 
     def create(self, validated_data):
         members = validated_data.pop('members', [])
@@ -172,8 +174,9 @@ class GroupSerializer(serializers.ModelSerializer):
 
 class MeetingSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
-    creator = serializers.PrimaryKeyRelatedField(read_only=True)
-    members = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+    creator = UserSerializer(read_only=True)
+    members = serializers.PrimaryKeyRelatedField(queryset=UserProfile.objects.all(), many=True, required=False)
+    # members_data = UserSerializer(source='members', many=True, read_only=True)  # TODO: slow performance
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -182,6 +185,7 @@ class MeetingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Meeting
         fields = ('id', 'name', 'location', 'description', 'start_date', 'start_time', 'duration_minutes', 'course', 'creator', 'members')
+        read_only_fields = ('creator',)
 
     def create(self, validated_data):
         members = validated_data.pop('members', [])
@@ -203,7 +207,7 @@ class MeetingSerializer(serializers.ModelSerializer):
 
 class CourseMessageSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
-    creator = serializers.PrimaryKeyRelatedField(read_only=True)
+    creator = UserSerializer()
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -212,7 +216,7 @@ class CourseMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = CourseMessage
         fields = ('id', 'content', 'course', 'creator', 'timestamp')
-        read_only_fields = ('timestamp',)
+        read_only_fields = ('creator', 'timestamp')
 
     def create(self, validated_data):
         course_message = CourseMessage(**validated_data)
@@ -223,7 +227,7 @@ class CourseMessageSerializer(serializers.ModelSerializer):
 
 class GroupMessageSerializer(serializers.ModelSerializer):
     group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all(), validators=[IsGroupMemberValidator()])
-    creator = serializers.PrimaryKeyRelatedField(read_only=True)
+    creator = UserSerializer()
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -232,7 +236,7 @@ class GroupMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = GroupMessage
         fields = ('id', 'content', 'group', 'creator', 'timestamp')
-        read_only_fields = ('timestamp',)
+        read_only_fields = ('creator', 'timestamp')
 
     def create(self, validated_data):
         print(str(validated_data))
