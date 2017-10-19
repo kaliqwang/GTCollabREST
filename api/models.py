@@ -218,7 +218,7 @@ class Group(models.Model):
     objects = GetOrNoneManager()
 
     class Meta:
-        ordering = ('course',)
+        ordering = ('course', 'name', 'pk')
 
     def __str__(self):
         return str(self.course) + ' - ' + self.name
@@ -242,7 +242,7 @@ class Meeting(models.Model):
     objects = GetOrNoneManager()
 
     class Meta:
-        ordering = ('course', '-start_date', '-start_time', '-duration_minutes', 'name')
+        ordering = ('course', '-start_date', '-start_time', '-duration_minutes', 'name', 'pk')
 
     def __str__(self):
         return str(self.course) + ' - ' + self.name

@@ -207,7 +207,7 @@ class MeetingSerializer(serializers.ModelSerializer):
 
 class CourseMessageSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
-    creator = UserSerializer()
+    creator = UserSerializer(read_only=True)
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -227,7 +227,7 @@ class CourseMessageSerializer(serializers.ModelSerializer):
 
 class GroupMessageSerializer(serializers.ModelSerializer):
     group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all(), validators=[IsGroupMemberValidator()])
-    creator = UserSerializer()
+    creator = UserSerializer(read_only=True)
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
