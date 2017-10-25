@@ -48,7 +48,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    profile = UserProfileSerializer()
+    profile = UserProfileSerializer(required=False)
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
@@ -65,7 +65,8 @@ class UserSerializer(serializers.ModelSerializer):
         profile_data = validated_data.pop('profile', None)
         user = User.objects.create_user(**validated_data)
         user_profile = user.profile  # auto-generated
-        # TODO: set user profile fields from profile_data
+        if profile_data:
+            pass # TODO: set user profile fields from profile_data
         user_profile.save()
         return user
 
@@ -76,7 +77,8 @@ class UserSerializer(serializers.ModelSerializer):
         instance.email = validated_data.get('email', instance.email)
         instance.save()
         user_profile = instance.profile
-        # TODO: set user profile fields from profile_data
+        if profile_data:
+            pass # TODO: set user profile fields from profile_data
         user_profile.save()
         return instance
 
