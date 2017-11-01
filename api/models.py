@@ -249,12 +249,13 @@ class Group(models.Model):
         }
         count = 0
         for m in self.members.all():
-            for d in m.gcmdevice_set.all():
-                try:
-                    d.send_message(self.creator.first_name + " has added you to their group", title=self.name, extra=data)
-                except HTTPError as e:
-                    logger.debug(str(e))
-                count += 1
+            if m is not self.creator:
+                for d in m.gcmdevice_set.all():
+                    try:
+                        d.send_message(self.creator.first_name + " has added you to their group", title=self.name, extra=data)
+                    except HTTPError as e:
+                        logger.debug(str(e))
+                    count += 1
         logger.debug("Group.notify_members: " + str(self.members.count()) + " recipients " + str(count) + " devices")
 
 
@@ -287,7 +288,8 @@ def send_meeting_invitations(sender, instance=None, created=False, **kwargs):
     if created:
         gi = MeetingInvitation(meeting=instance, creator=instance.creator)
         gi.save()
-        gi.recipients = instance.course.members.all();
+        gi.recipients = instance.course.members.all()
+        gi.recipients.remove(instance.creator)
         gi.broadcast()
 
 
