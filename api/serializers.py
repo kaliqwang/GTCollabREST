@@ -146,7 +146,7 @@ class CourseSerializer(serializers.ModelSerializer):
 class GroupSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
     creator = UserSerializer(read_only=True)
-    members = serializers.PrimaryKeyRelatedField(queryset=UserProfile.objects.all(), many=True, required=False)
+    members = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
     # members_data = UserSerializer(source='members', many=True, read_only=True)  # TODO: slow performance
 
     def __init__(self, *args, **kwargs):
@@ -177,7 +177,7 @@ class GroupSerializer(serializers.ModelSerializer):
 class MeetingSerializer(serializers.ModelSerializer):
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.all(), validators=[IsCourseMemberValidator()])
     creator = UserSerializer(read_only=True)
-    members = serializers.PrimaryKeyRelatedField(queryset=UserProfile.objects.all(), many=True, required=False)
+    members = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
     # members_data = UserSerializer(source='members', many=True, read_only=True)  # TODO: slow performance
 
     def __init__(self, *args, **kwargs):

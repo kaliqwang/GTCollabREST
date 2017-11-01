@@ -152,19 +152,19 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
+        'console':{
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
         'file': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler',
             'filename': 'gtcollab.log',
         },
-        'console':{
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-        },
     },
     'loggers': {
         'api.models': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'DEBUG',
         }
     }
@@ -173,5 +173,6 @@ LOGGING = {
 PUSH_NOTIFICATIONS_SETTINGS = {
     'FCM_API_KEY': 'AAAAwDp5vSA:APA91bGgJhRMe039TE_WhAowuH05zUouljxe6pOWSG1pP_d4CQkjHLUwBIG8vYIACntFZ-xB-6Rk0IQ-hUMg9i0UOK4_tNp5bbb-L9BoxgMmJarYd4R3yBfne5kpTade4HLN7eNtbDE8',
     'FCM_POST_URL': 'https://fcm.googleapis.com/v1/projects/gtcollab-ef8e0/messages:send',
-    'UPDATE_ON_DUPLICATE_REG_ID': True,
+    'FCM_ERROR_TIMEOUT': 10,
+    'UPDATE_ON_DUPLICATE_REG_ID': True
 }

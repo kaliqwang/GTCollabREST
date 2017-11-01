@@ -102,6 +102,26 @@ class MeetingAdmin(admin.ModelAdmin):
     filter_horizontal = ('members',)
 
 
+class GroupInvitationAdmin(admin.ModelAdmin):
+    list_display = ('group', 'creator', 'timestamp')
+    list_select_related = ('group', 'creator')
+    list_filter = ('timestamp', 'group')
+    readonly_fields = ('group', 'creator', 'recipients', 'timestamp')
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class MeetingInvitationAdmin(admin.ModelAdmin):
+    list_display = ('meeting', 'creator', 'timestamp')
+    list_select_related = ('meeting', 'creator')
+    list_filter = ('timestamp', 'meeting')
+    readonly_fields = ('meeting', 'creator', 'recipients', 'timestamp')
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 class CourseMessageAdmin(admin.ModelAdmin):
     list_display = ('content', 'creator', 'course', 'timestamp')
     list_select_related = ('course', 'creator')
@@ -152,6 +172,8 @@ admin.site.register(Section, SectionAdmin)
 admin.site.register(Course, CourseAdmin)
 admin.site.register(Group, GroupAdmin)
 admin.site.register(Meeting, MeetingAdmin)
+admin.site.register(GroupInvitation, GroupInvitationAdmin)
+admin.site.register(MeetingInvitation, MeetingInvitationAdmin)
 admin.site.register(CourseMessage, CourseMessageAdmin)
 admin.site.register(GroupMessage, GroupMessageAdmin)
 admin.site.register(ServerData, ServerDataAdmin)
