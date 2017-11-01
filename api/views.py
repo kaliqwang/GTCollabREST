@@ -97,6 +97,7 @@ class UserViewSet(ModelViewSet):
     serializer_class = UserSerializer
     queryset = User.objects.all()
     ordering = ('pk',)
+    search_fields = ('first_name', 'last_name')
     filter_fields = ('username', 'first_name', 'last_name', 'email', 'courses_as_member', 'groups_as_member', 'meetings_as_member')
     ordering_fields = '__all__'
 
@@ -105,6 +106,7 @@ class TermViewSet(ReadOnlyModelViewSet):
     serializer_class = TermSerializer
     queryset = Term.objects.all()
     ordering = ('-code',)
+    search_fields = ('name',)
     filter_class = TermFilter
     ordering_fields = '__all__'
 
@@ -117,7 +119,6 @@ class SubjectViewSet(ReadOnlyModelViewSet):
     serializer_class = SubjectSerializer
     queryset = Subject.objects.all()
     ordering = ('-term__code', 'code')
-    filter_backends = (DjangoFilterBackend, drf_filters.OrderingFilter, drf_filters.SearchFilter,)
     search_fields = ('code', 'name')
     filter_fields = ('name', 'code', 'term', 'term__name', 'term__code', 'courses_loaded')
     ordering_fields = '__all__'
@@ -127,7 +128,6 @@ class CourseViewSet(ReadOnlyModelViewSet):
     serializer_class = CourseSerializer
     queryset = Course.objects.all()
     ordering = ('subject__code', 'course_number')
-    filter_backends = (DjangoFilterBackend, drf_filters.OrderingFilter, drf_filters.SearchFilter,)
     search_fields = ('subject__code', 'course_number', 'subject__name', 'name')  # TODO: remove name and subject__name for performance?
     filter_fields = ('name', 'subject', 'subject__code', 'subject__term', 'subject__term__name', 'subject__term__code', 'course_number', 'members', 'is_cancelled')  # TODO: make subject__code case-insensitive?
     ordering_fields = '__all__'
@@ -149,6 +149,7 @@ class GroupViewSet(ModelViewSet):
     serializer_class = GroupSerializer
     queryset = Group.objects.all()
     ordering = ('course', 'name', 'pk')
+    search_fields = ('name', 'creator__first_name', 'creator__last_name', 'members__first_name', 'members__last_name')
     filter_fields = '__all__'
     ordering_fields = '__all__'
 
@@ -171,6 +172,7 @@ class MeetingViewSet(ModelViewSet):
     serializer_class = MeetingSerializer
     queryset = Meeting.objects.all()
     ordering = ('course', '-start_date', '-start_time', '-duration_minutes', 'name', 'pk')
+    search_fields = ('name', 'description', 'location', 'creator__first_name', 'creator__last_name', 'members__first_name', 'members__last_name')
     filter_class = MeetingFilter
     ordering_fields = '__all__'
 
@@ -193,6 +195,7 @@ class CourseMessageViewSet(ModelViewSet):
     serializer_class = CourseMessageSerializer
     queryset = CourseMessage.objects.all()
     ordering = ('course', '-pk')
+    search_fields = ('content', 'creator__first_name', 'creator__last_name')
     filter_class = CourseMessageFilter
     ordering_fields = '__all__'
 
@@ -201,6 +204,7 @@ class GroupMessageViewSet(ModelViewSet):
     serializer_class = GroupMessageSerializer
     queryset = GroupMessage.objects.all()
     ordering = ('group__course', 'group', '-pk')
+    search_fields = ('content', 'creator__first_name', 'creator__last_name')
     filter_class = GroupMessageFilter
     ordering_fields = '__all__'
 

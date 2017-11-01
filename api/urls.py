@@ -1,4 +1,5 @@
 from django.conf.urls import url
+from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
 from rest_framework import routers
 from rest_framework.authtoken import views
 from rest_framework.documentation import include_docs_urls
@@ -15,6 +16,7 @@ router.register(r'meetings', MeetingViewSet)
 router.register(r'course-messages', CourseMessageViewSet)
 router.register(r'group-messages', GroupMessageViewSet)
 router.register(r'server-status', ServerStateViewSet)
+router.register(r'devices/fcm', GCMDeviceAuthorizedViewSet)
 urlpatterns = router.urls
 
 urlpatterns += [

@@ -1,11 +1,12 @@
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 
 from django.conf import settings
 from django.db import models
 from django.db.models import Sum, Count
 from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
+from push_notifications.models import GCMDevice
 from rest_framework.authtoken.models import Token
 
 # ~~~~~~~~ Other ~~~~~~~~ #
@@ -280,6 +281,121 @@ class GroupMessage(models.Model):
 
     def __str__(self):
         return str(self.group) + ' - ' + self.content
+
+
+class GroupInvitation(models.Model):
+    group = models.ForeignKey(Group, related_name="invitations", on_delete=models.CASCADE, editable=False)
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="group_invitations_as_creator", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
+    recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="group_invitations_as_recipient")
+    timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+
+    objects = GetOrNoneManager()
+
+    class Meta:
+        ordering = ('group__course', 'group', '-pk')
+
+    def __str__(self):
+        return 'Group ' + self.group.pk + ' - Invitation ' + self.pk + ' - ' + self.timestamp
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            self.broadcast()
+        super(GroupInvitation, self).save(*args, **kwargs)
+
+    def broadcast(self):
+        count = 0
+        for r in self.recipients:
+            for d in r.gcmdevice_set:
+                d.send_message(self.creator.first_name + " has invited you to their group", title=self.group.name)
+                count += 1
+        logger.debug("GroupInvitation.broadcast: " + self.recipients.count() + " recipients " + count + " devices")
+
+
+class MeetingInvitation(models.Model):
+    meeting = models.ForeignKey(Meeting, related_name="invitations", on_delete=models.CASCADE, editable=False)
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="meeting_invitations_as_creator", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
+    recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_invitations_as_recipient")
+    timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+
+    objects = GetOrNoneManager()
+
+    class Meta:
+        ordering = ('meeting__course', 'meeting', '-pk')
+
+    def __str__(self):
+        return 'Meeting ' + self.meeting.pk + ' - Invitation ' + self.pk + ' - ' + self.timestamp
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            self.broadcast()
+        super(MeetingInvitation, self).save(*args, **kwargs)
+
+    def broadcast(self):
+        count = 0
+        for r in self.recipients:
+            for d in r.gcmdevice_set:
+                d.send_message(self.creator.first_name + " has invited you to their meeting", title=self.meeting.name)
+                count += 1
+        logger.debug("MeetingInvitation.broadcast: " + self.recipients.count() + " recipients " + count + " devices")
+
+
+class MeetingProposal(models.Model):
+    meeting = models.ForeignKey(Meeting, related_name="proposals", on_delete=models.CASCADE, editable=False)
+    location = models.CharField(max_length=50)
+    start_date = models.DateField(blank=True)
+    start_time = models.TimeField(blank=True)
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="meeting_proposals", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
+    timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+    approval_needed = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_proposals_approval_needed", blank=True, editable=False)
+    expiration_minutes = models.PositiveIntegerField(default=60)  # expires in 1 hr by default
+    closed = models.BooleanField(default=False)
+
+    objects = GetOrNoneManager()
+
+    class Meta:
+        ordering = ('meeting__course', 'meeting', '-pk')
+
+    def __str__(self):
+        return 'Meeting ' + self.meeting.pk + ' - Proposal ' + self.pk + ' - ' + self.timestamp
+
+    @property
+    def is_expired(self):
+        return self.timestamp + timedelta(minutes=self.expiration_minutes) < timezone.now()
+
+    @property
+    def is_closed(self):
+        return self.closed
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            members = list(self.meeting.members)
+            self.approval_needed.add(*members)
+            self.broadcast()
+        else:
+            if self.approval_needed.count() == 0:
+                self.apply()
+        super(MeetingProposal, self).save(*args, **kwargs)
+
+    def apply(self):
+        m = self.meeting
+        m.location = self.location
+        m.start_date = self.start_date
+        m.start_time = self.start_time
+        m.save()
+        self.closed = True
+        self.save()
+
+    def approve_by(self, user):
+        self.approval_needed.remove(user)
+        self.save()
+
+    def broadcast(self):
+        count = 0
+        for m in self.approval_needed:
+            for d in m.gcmdevice_set:
+                d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name)
+                count += 1
+        logger.debug("MeetingProposal.broadcast: " + self.approval_needed.count() + " recipients " + count + " devices")
 
 
 class ServerData(SingletonModel):

@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'rest_framework',
     'django_filters',
+    'push_notifications',
     'api',
 ]
 
@@ -143,7 +144,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 100,
     'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework.authentication.TokenAuthentication',),
-    'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend', 'rest_framework.filters.OrderingFilter'),
+    'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend', 'rest_framework.filters.OrderingFilter', 'rest_framework.filters.SearchFilter'),
 }
 
 
@@ -167,4 +168,10 @@ LOGGING = {
             'level': 'DEBUG',
         }
     }
+}
+
+PUSH_NOTIFICATIONS_SETTINGS = {
+    'FCM_API_KEY': 'AAAAwDp5vSA:APA91bGgJhRMe039TE_WhAowuH05zUouljxe6pOWSG1pP_d4CQkjHLUwBIG8vYIACntFZ-xB-6Rk0IQ-hUMg9i0UOK4_tNp5bbb-L9BoxgMmJarYd4R3yBfne5kpTade4HLN7eNtbDE8',
+    'FCM_POST_URL': 'https://fcm.googleapis.com/v1/projects/gtcollab-ef8e0/messages:send',
+    'UPDATE_ON_DUPLICATE_REG_ID': True,
 }
