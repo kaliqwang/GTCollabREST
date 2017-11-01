@@ -172,7 +172,8 @@ LOGGING = {
 
 PUSH_NOTIFICATIONS_SETTINGS = {
     'FCM_API_KEY': 'AAAAwDp5vSA:APA91bGgJhRMe039TE_WhAowuH05zUouljxe6pOWSG1pP_d4CQkjHLUwBIG8vYIACntFZ-xB-6Rk0IQ-hUMg9i0UOK4_tNp5bbb-L9BoxgMmJarYd4R3yBfne5kpTade4HLN7eNtbDE8',
-    'FCM_POST_URL': 'https://fcm.googleapis.com/v1/projects/gtcollab-ef8e0/messages:send',
+    # 'FCM_POST_URL': 'https://fcm.googleapis.com/fcm/send', # legacy protocol - DEFAULT
+    # 'FCM_POST_URL': 'https://fcm.googleapis.com/v1/projects/gtcollab-ef8e0/messages:send', # new protocol
     'FCM_ERROR_TIMEOUT': 10,
-    'UPDATE_ON_DUPLICATE_REG_ID': True
+    'UPDATE_ON_DUPLICATE_REG_ID': True,
 }

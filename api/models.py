@@ -7,9 +7,17 @@ from django.db.models import Sum, Count
 from django.db.models.signals import post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
 from push_notifications.models import GCMDevice
+from requests import HTTPError
 from rest_framework.authtoken.models import Token
 
 # ~~~~~~~~ Other ~~~~~~~~ #
+
+
+# Message Types
+GROUP_INVITATION = 1
+MEETING_INVITATION = 2
+GROUP_NOTIFICATION = 3
+MEETING_PROPOSAL = 4
 
 
 logger = logging.getLogger(__name__)
@@ -232,6 +240,23 @@ class Group(models.Model):
     def members_count(self):
         return self.members.all().count()
 
+    def notify_members(self):
+        data = {
+            "type": GROUP_NOTIFICATION,
+            "group_id": self.pk,
+            "course_short_name": self.course.short_name,
+            "creator_first_name": self.creator.first_name
+        }
+        count = 0
+        for m in self.members.all():
+            for d in m.gcmdevice_set.all():
+                try:
+                    d.send_message(self.creator.first_name + " has added you to their group", title=self.name, extra=data)
+                except HTTPError as e:
+                    logger.debug(str(e))
+                count += 1
+        logger.debug("Group.notify_members: " + str(self.members.count()) + " recipients " + str(count) + " devices")
+
 
 class Meeting(models.Model):
     name = models.CharField(max_length=50)
@@ -317,16 +342,20 @@ class GroupInvitation(models.Model):
 
     def broadcast(self):
         data = {
+            "type": GROUP_INVITATION,
             "group_id": self.group.pk,
-            "course_short_name": self.meeting.course.short_name,
+            "course_short_name": self.group.course.short_name,
             "creator_first_name": self.creator.first_name
         }
         count = 0
         for r in self.recipients.all():
             for d in r.gcmdevice_set.all():
-                d.send_message(self.creator.first_name + " has invited you to their group", title=self.group.name, extra=data)
+                try:
+                    d.send_message(self.creator.first_name + " has invited you to their group", title=self.group.name, extra=data)
+                except HTTPError as e:
+                    logger.debug(str(e))
                 count += 1
-        logger.debug("GroupInvitation.broadcast: " + self.recipients.count() + " recipients " + count + " devices")
+        logger.debug("GroupInvitation.broadcast: " + str(self.recipients.count()) + " recipients " + str(count) + " devices")
 
 
 class MeetingInvitation(models.Model):
@@ -345,6 +374,7 @@ class MeetingInvitation(models.Model):
 
     def broadcast(self):
         data = {
+            "type": MEETING_INVITATION,
             "meeting_id": self.meeting.pk,
             "course_short_name": self.meeting.course.short_name,
             "creator_first_name": self.creator.first_name
@@ -352,7 +382,10 @@ class MeetingInvitation(models.Model):
         count = 0
         for r in self.recipients.all():
             for d in r.gcmdevice_set.all():
-                d.send_message(self.creator.first_name + " has invited you to their meeting", title=self.meeting.name, extra=data)
+                try:
+                    d.send_message(self.creator.first_name + " has invited you to their meeting", title=self.meeting.name, extra=data)
+                except HTTPError as e:
+                    logger.debug(str(e))
                 count += 1
         logger.debug("MeetingInvitation.broadcast: " + str(self.recipients.count()) + " recipients " + str(count) + " devices")
 
@@ -408,10 +441,19 @@ class MeetingProposal(models.Model):
         self.save()
 
     def broadcast(self):
+        data = {
+            "type": MEETING_PROPOSAL,
+            "meeting_id": self.meeting.pk,
+            "course_short_name": self.meeting.course.short_name,
+            "creator_first_name": self.creator.first_name
+        }
         count = 0
         for m in self.approval_needed:
             for d in m.gcmdevice_set:
-                d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name)
+                try:
+                    d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name, extra=data)
+                except HTTPError as e:
+                    logger.debug(str(e))
                 count += 1
         logger.debug("MeetingProposal.broadcast: " + self.approval_needed.count() + " recipients " + count + " devices")
 
