@@ -249,7 +249,7 @@ class Group(models.Model):
         }
         count = 0
         for m in self.members.all():
-            if m is not self.creator:
+            if m.pk != self.creator.pk:
                 for d in m.gcmdevice_set.all():
                     try:
                         d.send_message(self.creator.first_name + " has added you to their group", title=self.name, extra=data)
