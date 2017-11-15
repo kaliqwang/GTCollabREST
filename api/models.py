@@ -75,9 +75,9 @@ def create_user_profile(sender, instance=None, created=False, **kwargs):
         user_profile.save()
 
 
-@receiver(pre_delete, sender=settings.AUTH_USER_MODEL)
-def delete_user_profile(sender, instance=None, **kwargs):
-    instance.profile.delete()
+@receiver(post_delete, sender='main.UserProfile')
+def delete_user(sender, instance=None, **kwargs):  # TODO: make sure userprofile can't be deleted directly? (only on cascade delete)
+    instance.user.delete()
 
 
 # ~~~~~~~~ Models ~~~~~~~~ #
