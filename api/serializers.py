@@ -33,6 +33,19 @@ class IsGroupMemberValidator(object):
         self.user = serializer_field.parent.context['request'].user
 
 
+class IsMeetingMemberValidator(object):
+    def __init__(self, user=None):
+        self.user = None
+
+    def __call__(self, meeting):
+        if not self.user.meetings_as_member.filter(pk=meeting.pk):
+            message = 'Must be meeting member'
+            raise serializers.ValidationError(message)
+
+    def set_context(self, serializer_field):
+        self.user = serializer_field.parent.context['request'].user
+
+
 # ~~~~~~~~ Serializers ~~~~~~~~ #
 
 
@@ -206,6 +219,27 @@ class MeetingSerializer(serializers.ModelSerializer):
         instance.save()
         instance.members.set(validated_data.get('members', instance.members.all()))
         return instance
+
+
+class MeetingProposalSerializer(serializers.ModelSerializer):
+    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+    creator = UserSerializer(read_only=True)
+    responses_received = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super(MeetingProposalSerializer, self).__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = MeetingProposal
+        fields = ('id', 'meeting', 'location', 'start_date', 'start_time', 'creator', 'timestamp', 'responses_received', 'expiration_minutes', 'applied', 'closed')
+        read_only_fields = ('creator', 'timestamp', 'approval_needed', 'expiration_minutes', 'applied', 'closed')
+
+    def create(self, validated_data):
+        meeting_proposal = MeetingProposal(**validated_data)
+        meeting_proposal.creator = self.context['request'].user
+        meeting_proposal.save()
+        return meeting_proposal
 
 
 class CourseMessageSerializer(serializers.ModelSerializer):

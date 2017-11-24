@@ -153,11 +153,17 @@ class GroupViewSet(ModelViewSet):
     filter_fields = '__all__'
     ordering_fields = '__all__'
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if request.user.pk != instance.creator.pk:
+            return Response("Must be group creator", status=status.HTTP_403_FORBIDDEN)
+        return super(GroupViewSet, self).destroy(request, *args, **kwargs)
+
     @detail_route(methods=['post'])
     def join(self, request, pk=None):
         instance = self.get_object()
         if not request.user.courses_as_member.filter(pk=instance.course.pk):
-            return Response("Must be course member", status=status.HTTP_400_BAD_REQUEST)
+            return Response("Must be course member", status=status.HTTP_403_FORBIDDEN)
         instance.members.add(request.user)
         return Response(self.get_serializer(instance).data)
 
@@ -176,11 +182,17 @@ class MeetingViewSet(ModelViewSet):
     filter_class = MeetingFilter
     ordering_fields = '__all__'
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if request.user.pk != instance.creator.pk:
+            return Response("Must be meeting creator", status=status.HTTP_403_FORBIDDEN)
+        return super(MeetingViewSet, self).destroy(request, *args, **kwargs)
+
     @detail_route(methods=['post'])
     def join(self, request, pk=None):
         instance = self.get_object()
         if not request.user.courses_as_member.filter(pk=instance.course.pk):
-            return Response("Must be course member", status=status.HTTP_400_BAD_REQUEST)
+            return Response("Must be course member", status=status.HTTP_403_FORBIDDEN)
         instance.members.add(request.user)
         return Response(self.get_serializer(instance).data)
 
@@ -188,6 +200,31 @@ class MeetingViewSet(ModelViewSet):
     def leave(self, request, pk=None):
         instance = self.get_object()
         instance.members.remove(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class MeetingProposalViewSet(ModelViewSet):
+    serializer_class = MeetingProposalSerializer
+    queryset = MeetingProposal.objects.all()
+    ordering = ('meeting__course', 'meeting', '-pk')
+    # search_fields = None # TODO
+    ordering_fields = '__all__'
+    filter_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def approve(self, request, pk=None):
+        instance = self.get_object()
+        if not request.user.meetings_as_member.filter(pk=instance.meeting.pk):  # TODO: put in approve_by() function?
+            return Response("Must be meeting member", status=status.HTTP_403_FORBIDDEN)
+        instance.approve_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+    @detail_route(methods=['post'])
+    def reject(self, request, pk=None):
+        instance = self.get_object()
+        if not request.user.meetings_as_member.filter(pk=instance.meeting.pk):  # TODO: put in approve_by() function?
+            return Response("Must be meeting member", status=status.HTTP_403_FORBIDDEN)
+        instance.reject_by(request.user)
         return Response(self.get_serializer(instance).data)
 
 

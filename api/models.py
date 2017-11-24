@@ -13,11 +13,12 @@ from rest_framework.authtoken.models import Token
 # ~~~~~~~~ Other ~~~~~~~~ #
 
 
-# Message Types
+# Message Types  TODO: sync with Constants.java in Android app
 GROUP_INVITATION = 1
 MEETING_INVITATION = 2
 GROUP_NOTIFICATION = 3
 MEETING_PROPOSAL = 4
+MEETING_PROPOSAL_RESULT = 5
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def create_user_profile(sender, instance=None, created=False, **kwargs):
         user_profile.save()
 
 
-@receiver(post_delete, sender='main.UserProfile')
+@receiver(post_delete, sender='api.UserProfile')
 def delete_user(sender, instance=None, **kwargs):  # TODO: make sure userprofile can't be deleted directly? (only on cascade delete)
     instance.user.delete()
 
@@ -286,11 +287,11 @@ class Meeting(models.Model):
 @receiver(post_save, sender=Meeting)
 def send_meeting_invitations(sender, instance=None, created=False, **kwargs):
     if created:
-        gi = MeetingInvitation(meeting=instance, creator=instance.creator)
-        gi.save()
-        gi.recipients = instance.course.members.all()
-        gi.recipients.remove(instance.creator)
-        gi.broadcast()
+        mi = MeetingInvitation(meeting=instance, creator=instance.creator)
+        mi.save()
+        mi.recipients = instance.course.members.all()
+        mi.recipients.remove(instance.creator)
+        mi.broadcast()
 
 
 class CourseMessage(models.Model):
@@ -342,7 +343,7 @@ class GroupInvitation(models.Model):
             self.broadcast()
         super(GroupInvitation, self).save(*args, **kwargs)
 
-    def broadcast(self):
+    def broadcast(self):  # TODO: clean up all of these broadcast models
         data = {
             "type": GROUP_INVITATION,
             "group_id": self.group.pk,
@@ -399,9 +400,10 @@ class MeetingProposal(models.Model):
     start_time = models.TimeField(blank=True)
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="meeting_proposals", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
-    approval_needed = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_proposals_approval_needed", blank=True, editable=False)
-    expiration_minutes = models.PositiveIntegerField(default=60)  # expires in 1 hr by default
-    closed = models.BooleanField(default=False)
+    responses_received = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_proposals_responses_received", blank=True, editable=False)
+    expiration_minutes = models.PositiveIntegerField(default=60, blank=True)  # expires in 1 hr by default TODO allow user to set?
+    applied = models.BooleanField(default=False, blank=True, editable=False)
+    closed = models.BooleanField(default=False, blank=True, editable=False)
 
     objects = GetOrNoneManager()
 
@@ -421,13 +423,26 @@ class MeetingProposal(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pk is None:
-            members = list(self.meeting.members)
-            self.approval_needed.add(*members)
-            self.broadcast()
-        else:
-            if self.approval_needed.count() == 0:
-                self.apply()
+            if not self.location:
+                self.location = self.meeting.location
+            if not self.start_date:
+                self.start_date = self.meeting.start_date
+            if not self.start_time:
+                self.start_time = self.meeting.start_time
         super(MeetingProposal, self).save(*args, **kwargs)
+
+    def approve_by(self, user):
+        if not self.closed:
+            self.responses_received.add(user)
+            self.save()
+            if self.responses_received.count() == (self.meeting.members.count() - 1):  # TODO: do a more robust check
+                self.apply()
+
+    def reject_by(self, user):
+        if not self.closed:
+            self.responses_received.add(user)
+            self.save()
+            self.close()
 
     def apply(self):
         m = self.meeting
@@ -435,29 +450,69 @@ class MeetingProposal(models.Model):
         m.start_date = self.start_date
         m.start_time = self.start_time
         m.save()
+        self.applied = True
+        self.save()
+        self.close()
+
+    def close(self):
         self.closed = True
         self.save()
+        self.broadcast_result()
 
-    def approve_by(self, user):
-        self.approval_needed.remove(user)
-        self.save()
+    def broadcast_result(self):
+        if self.applied:
+            message = "Meeting time/location has been changed"
+        else:
+            message = "Proposal for new meeting time/location has been rejected"
+        data = {
+            "type": MEETING_PROPOSAL_RESULT,
+            "id": self.pk,
+            "meeting_id": self.meeting.pk,
+            "location": self.location,
+            "start_date": str(self.start_date),
+            "start_time": str(self.start_time),
+            "applied": self.applied,
+            "course_short_name": self.meeting.course.short_name,
+            "creator_first_name": self.creator.first_name,
+        }
+        count = 0
+        for m in self.meeting.members.all():
+            for d in m.gcmdevice_set.all():
+                try:
+                    d.send_message(message, title=self.meeting.name, extra=data)
+                except HTTPError as e:
+                    logger.debug(str(e))
+                count += 1
+        logger.debug("MeetingProposal.broadcast_result: " + str(self.meeting.members.count()) + " recipients " + str(count) + " devices")
 
     def broadcast(self):
         data = {
             "type": MEETING_PROPOSAL,
+            "id": self.pk,
             "meeting_id": self.meeting.pk,
+            "location": self.location,
+            "start_date": str(self.start_date),
+            "start_time": str(self.start_time),
             "course_short_name": self.meeting.course.short_name,
             "creator_first_name": self.creator.first_name
         }
         count = 0
-        for m in self.approval_needed:
-            for d in m.gcmdevice_set:
-                try:
-                    d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name, extra=data)
-                except HTTPError as e:
-                    logger.debug(str(e))
-                count += 1
-        logger.debug("MeetingProposal.broadcast: " + self.approval_needed.count() + " recipients " + count + " devices")
+        for m in self.meeting.members.all():
+            if m.pk != self.creator.pk:  # TODO: don't send notification to creator
+                for d in m.gcmdevice_set.all():
+                    try:
+                        d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name, extra=data)
+                    except HTTPError as e:
+                        logger.debug(str(e))
+                    count += 1
+                    logger.debug(
+                        "MeetingProposal.broadcast: " + str(self.meeting.members.count()) + " recipients " + str(count) + " devices")
+
+
+@receiver(post_save, sender=MeetingProposal)
+def send_meeting_proposals(sender, instance=None, created=False, **kwargs):
+    if created:
+        instance.broadcast()
 
 
 class ServerData(SingletonModel):
