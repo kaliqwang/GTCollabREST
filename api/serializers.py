@@ -53,7 +53,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(UserProfileSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = UserProfile
@@ -65,7 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(UserSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = User
@@ -100,7 +100,7 @@ class TermSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(TermSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Term
@@ -111,7 +111,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(SubjectSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Subject
@@ -123,7 +123,7 @@ class SectionSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(SectionSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Section
@@ -134,7 +134,7 @@ class MeetingTimeSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(MeetingTimeSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = MeetingTime
@@ -148,7 +148,7 @@ class CourseSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(CourseSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Course
@@ -164,7 +164,7 @@ class GroupSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(GroupSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Group
@@ -178,7 +178,13 @@ class GroupSerializer(serializers.ModelSerializer):
         group.save()
         group.members.add(group.creator)
         group.members.add(*members)
-        group.notify_members()
+        # TODO: cleanup
+        group_members = group.members.all()
+        notification = GroupNotification(group=group, message="%s has added you to their group" % group.creator, creator=group.creator)  # TODO: refactor
+        notification.save()
+        notification.recipients.add(*group_members)
+        notification.recipients.remove(group.creator)
+        notification.broadcast()
         return group
 
     def update(self, instance, validated_data):
@@ -196,7 +202,7 @@ class MeetingSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(MeetingSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = Meeting
@@ -210,6 +216,19 @@ class MeetingSerializer(serializers.ModelSerializer):
         meeting.save()
         meeting.members.add(meeting.creator)
         meeting.members.add(*members)
+        # TODO: cleanup
+        course_members = meeting.course.members.all()
+        meeting_members = meeting.members.all()
+        notification = MeetingNotification(meeting=meeting, message="%s has added you to their meeting" % meeting.creator, creator=meeting.creator)  # TODO: refactor
+        notification.save()
+        notification.recipients.add(*meeting_members)
+        notification.recipients.remove(meeting.creator)
+        notification.broadcast()
+        invitation = MeetingInvitation(meeting=meeting, creator=meeting.creator)
+        invitation.save()
+        invitation.recipients.add(*course_members)
+        invitation.recipients.remove(*meeting_members)
+        invitation.broadcast()
         return meeting
 
     def update(self, instance, validated_data):
@@ -221,25 +240,157 @@ class MeetingSerializer(serializers.ModelSerializer):
         return instance
 
 
-class MeetingProposalSerializer(serializers.ModelSerializer):
-    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+class StandardNotificationSerializer(serializers.ModelSerializer):
     creator = UserSerializer(read_only=True)
-    responses_received = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True, required=False)
+    recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(MeetingProposalSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = StandardNotification
+        fields = ('id', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'recipients_read_by', 'timestamp')
+
+    def create(self, validated_data):
+        recipients = validated_data.pop('recipients', [])
+        notification = StandardNotification(**validated_data)
+        notification.creator = self.context['request'].user
+        notification.save()
+        notification.recipients.add(*recipients)
+        notification.broadcast()
+        return notification
+
+
+class GroupNotificationSerializer(serializers.ModelSerializer):
+    group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all(), validators=[IsGroupMemberValidator()])
+    creator = UserSerializer(read_only=True)
+    recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = GroupNotification
+        fields = ('id', 'group', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'title', 'recipients_read_by', 'timestamp')
+
+    def create(self, validated_data):
+        recipients = validated_data.pop('recipients', [])
+        notification = GroupNotification(**validated_data)
+        notification.creator = self.context['request'].user
+        notification.save()
+        notification.recipients.add(*recipients)
+        notification.broadcast()
+        return notification
+
+
+class MeetingNotificationSerializer(serializers.ModelSerializer):
+    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+    creator = UserSerializer(read_only=True)
+    recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = MeetingNotification
+        fields = ('id', 'meeting', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'title', 'recipients_read_by', 'timestamp')
+
+    def create(self, validated_data):
+        recipients = validated_data.pop('recipients', [])
+        notification = MeetingNotification(**validated_data)
+        notification.creator = self.context['request'].user
+        notification.save()
+        notification.recipients.add(*recipients)
+        notification.broadcast()
+        return notification
+
+
+class GroupInvitationSerializer(serializers.ModelSerializer):
+    group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all(), validators=[IsGroupMemberValidator()])
+    creator = UserSerializer(read_only=True)
+    recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = GroupInvitation
+        fields = ('id', 'group', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'title', 'message', 'message_expanded', 'recipients_read_by', 'timestamp')
+
+    def create(self, validated_data):
+        recipients = validated_data.pop('recipients', [])
+        notification = GroupInvitation(**validated_data)
+        notification.creator = self.context['request'].user
+        notification.save()
+        notification.recipients.add(*recipients)
+        notification.broadcast()
+        return notification
+
+
+class MeetingInvitationSerializer(serializers.ModelSerializer):
+    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+    creator = UserSerializer(read_only=True)
+    recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = MeetingInvitation
+        fields = ('id', 'meeting', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'title', 'message', 'message_expanded', 'recipients_read_by', 'timestamp')
+
+    def create(self, validated_data):
+        recipients = validated_data.pop('recipients', [])
+        notification = MeetingInvitation(**validated_data)
+        notification.creator = self.context['request'].user
+        notification.save()
+        notification.recipients.add(*recipients)
+        notification.broadcast()
+        return notification
+
+
+class MeetingProposalSerializer(serializers.ModelSerializer):
+    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+    creator = UserSerializer(read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = MeetingProposal
-        fields = ('id', 'meeting', 'location', 'start_date', 'start_time', 'creator', 'timestamp', 'responses_received', 'expiration_minutes', 'applied', 'closed')
-        read_only_fields = ('creator', 'timestamp', 'approval_needed', 'expiration_minutes', 'applied', 'closed')
+        fields = ('id', 'meeting', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp', 'location', 'start_date', 'start_time', 'responses_received', 'expiration_minutes', 'applied', 'closed')
+        read_only_fields = ('creator', 'title', 'message', 'message_expanded', 'recipients', 'recipients_read_by', 'timestamp', 'responses_received', 'expiration_minutes', 'applied', 'closed')
 
     def create(self, validated_data):
         meeting_proposal = MeetingProposal(**validated_data)
         meeting_proposal.creator = self.context['request'].user
-        meeting_proposal.save()
+        meeting_proposal.save()  # TODO: note: notification is broadcasted automatically via post_save signal
         return meeting_proposal
+
+
+class MeetingProposalResultSerializer(serializers.ModelSerializer):
+    meeting = serializers.PrimaryKeyRelatedField(queryset=Meeting.objects.all(), validators=[IsMeetingMemberValidator()])
+    creator = UserSerializer(read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        many = kwargs.pop('many', True)
+        super().__init__(many=many, *args, **kwargs)
+
+    class Meta:
+        model = MeetingProposal
+        fields = ('id', 'meeting_proposal', 'meeting', 'title', 'message', 'message_expanded', 'creator', 'recipients', 'recipients_read_by', 'timestamp')
+        read_only_fields = ('creator', 'title', 'message', 'message_expanded', 'recipients', 'recipients_read_by', 'timestamp')
 
 
 class CourseMessageSerializer(serializers.ModelSerializer):
@@ -248,7 +399,7 @@ class CourseMessageSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(CourseMessageSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = CourseMessage
@@ -268,7 +419,7 @@ class GroupMessageSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         many = kwargs.pop('many', True)
-        super(GroupMessageSerializer, self).__init__(many=many, *args, **kwargs)
+        super().__init__(many=many, *args, **kwargs)
 
     class Meta:
         model = GroupMessage

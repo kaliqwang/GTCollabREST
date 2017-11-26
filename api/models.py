@@ -14,11 +14,13 @@ from rest_framework.authtoken.models import Token
 
 
 # Message Types  TODO: sync with Constants.java in Android app
-GROUP_INVITATION = 1
-MEETING_INVITATION = 2
-GROUP_NOTIFICATION = 3
-MEETING_PROPOSAL = 4
-MEETING_PROPOSAL_RESULT = 5
+STANDARD_NOTIFICATION = 1
+GROUP_NOTIFICATION = 2
+MEETING_NOTIFICATION = 3
+GROUP_INVITATION = 4
+MEETING_INVITATION = 5
+MEETING_PROPOSAL = 6
+MEETING_PROPOSAL_RESULT = 7
 
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ class SingletonModel(models.Model):
 
     def save(self, *args, **kwargs):
         self.pk = 1
-        super(SingletonModel, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         pass
@@ -208,7 +210,7 @@ class Course(models.Model):
 
     def save(self, *args, **kwargs):
         self.subject_code = self.subject.code
-        super(Course, self).save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
 
 class MeetingTime(models.Model):
@@ -241,24 +243,6 @@ class Group(models.Model):
     def members_count(self):
         return self.members.all().count()
 
-    def notify_members(self):
-        data = {
-            "type": GROUP_NOTIFICATION,
-            "group_id": self.pk,
-            "course_short_name": self.course.short_name,
-            "creator_first_name": self.creator.first_name
-        }
-        count = 0
-        for m in self.members.all():
-            if m.pk != self.creator.pk:
-                for d in m.gcmdevice_set.all():
-                    try:
-                        d.send_message(self.creator.first_name + " has added you to their group", title=self.name, extra=data)
-                    except HTTPError as e:
-                        logger.debug(str(e))
-                    count += 1
-        logger.debug("Group.notify_members: " + str(self.members.count()) + " recipients " + str(count) + " devices")
-
 
 class Meeting(models.Model):
     name = models.CharField(max_length=50)
@@ -282,16 +266,6 @@ class Meeting(models.Model):
     @property
     def members_count(self):
         return self.members.all().count()
-
-
-@receiver(post_save, sender=Meeting)
-def send_meeting_invitations(sender, instance=None, created=False, **kwargs):
-    if created:
-        mi = MeetingInvitation(meeting=instance, creator=instance.creator)
-        mi.save()
-        mi.recipients = instance.course.members.all()
-        mi.recipients.remove(instance.creator)
-        mi.broadcast()
 
 
 class CourseMessage(models.Model):
@@ -324,98 +298,159 @@ class GroupMessage(models.Model):
         return str(self.group) + ' - ' + self.content
 
 
-class GroupInvitation(models.Model):
-    group = models.ForeignKey(Group, related_name="invitations", on_delete=models.CASCADE, editable=False)
-    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="group_invitations_as_creator", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
-    recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="group_invitations_as_recipient")
+class Notification(models.Model):
+    title = models.CharField(max_length=255)
+    message = models.CharField(max_length=255)  # TODO: CharField instead?
+    message_expanded = models.TextField()
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="notifications_as_creator", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
+    recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="notifications_as_recipient")
+    recipients_read_by = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="notifications_as_recipient_read_by")
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
     objects = GetOrNoneManager()
+
+    class Meta:
+        abstract = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.data = {}
+
+    def read_by(self, user):
+        self.recipients_read_by.add(user)
+
+    def set_data(self):
+        self.data["title"] = self.title
+        self.data["message"] = self.message
+        self.data["message_expanded"] = self.message_expanded
+        self.data["creator_first_name"] = self.creator.first_name
+
+    def broadcast(self):  # TODO: clean up
+        self.set_data()  # TODO: THIS SHOULD CALL SUBCLASS METHOD
+        logger.debug("Notification.broadcast: self.data: " + str(self.data))
+        count = 0
+        for r in self.recipients.all():
+            for d in r.gcmdevice_set.all():
+                try:
+                    d.send_message(self.message, title=self.title, extra=self.data)
+                except HTTPError as e:
+                    logger.debug(str(e))
+                count += 1
+        logger.debug("Notification.broadcast: " + str(self.recipients.count()) + " recipients " + str(count) + " devices")
+
+
+class StandardNotification(Notification):
+
+    class Meta:
+        ordering = ('-pk',)
+
+    def __str__(self):
+        return 'Standard Notification ' + str(self.pk) + ' - ' + str(self.timestamp)  # TODO
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = STANDARD_NOTIFICATION
+        self.data["id"] = self.pk
+
+
+class GroupNotification(StandardNotification):
+    group = models.ForeignKey(Group, related_name="notifications", on_delete=models.CASCADE, editable=False)
 
     class Meta:
         ordering = ('group__course', 'group', '-pk')
 
     def __str__(self):
-        return 'Group ' + str(self.group.pk) + ' - Invitation ' + str(self.pk) + ' - ' + str(self.timestamp)
+        return 'Group ' + str(self.group.pk) + ' - Notification ' + str(self.pk) + ' - ' + str(self.timestamp)  # TODO
 
     def save(self, *args, **kwargs):
         if self.pk is None:
-            self.broadcast()
-        super(GroupInvitation, self).save(*args, **kwargs)
+            self.title = self.group.course.short_name + " - " + self.group.name
+        super().save(*args, **kwargs)
 
-    def broadcast(self):  # TODO: clean up all of these broadcast models
-        data = {
-            "type": GROUP_INVITATION,
-            "group_id": self.group.pk,
-            "course_short_name": self.group.course.short_name,
-            "creator_first_name": self.creator.first_name
-        }
-        count = 0
-        for r in self.recipients.all():
-            for d in r.gcmdevice_set.all():
-                try:
-                    d.send_message(self.creator.first_name + " has invited you to their group", title=self.group.name, extra=data)
-                except HTTPError as e:
-                    logger.debug(str(e))
-                count += 1
-        logger.debug("GroupInvitation.broadcast: " + str(self.recipients.count()) + " recipients " + str(count) + " devices")
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = GROUP_NOTIFICATION
+        self.data["group_id"] = self.group.pk
+        self.data["course_short_name"] = self.group.course.short_name
 
 
-class MeetingInvitation(models.Model):
-    meeting = models.ForeignKey(Meeting, related_name="invitations", on_delete=models.CASCADE, editable=False)
-    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="meeting_invitations_as_creator", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
-    recipients = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_invitations_as_recipient")
-    timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+class GroupInvitation(GroupNotification):
 
-    objects = GetOrNoneManager()
+    class Meta:
+        ordering = ('group__course', 'group', '-pk')  # TODO: inherited automatically?
+
+    def __str__(self):
+        return 'Group ' + str(self.group.pk) + ' - Invitation ' + str(self.pk) + ' - ' + str(self.timestamp)   # TODO
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            self.title = self.meeting.course.short_name + " - Group Invitation"
+            self.message = self.creator.first_name + " has invited you to their group"
+            self.message_expanded = self.message + "\n\n" + self.group.name
+        super().save(*args, **kwargs)
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = GROUP_INVITATION
+        self.data["id"] = self.pk
+
+
+class MeetingNotification(StandardNotification):
+    meeting = models.ForeignKey(Meeting, related_name="notifications", on_delete=models.CASCADE, editable=False)
 
     class Meta:
         ordering = ('meeting__course', 'meeting', '-pk')
 
     def __str__(self):
-        return 'Meeting ' + str(self.meeting.pk) + ' - Invitation ' + str(self.pk) + ' - ' + str(self.timestamp)
+        return 'Meeting ' + str(self.meeting.pk) + ' - Notification ' + str(self.pk) + ' - ' + str(self.timestamp)  # TODO
 
-    def broadcast(self):
-        data = {
-            "type": MEETING_INVITATION,
-            "meeting_id": self.meeting.pk,
-            "course_short_name": self.meeting.course.short_name,
-            "creator_first_name": self.creator.first_name
-        }
-        count = 0
-        for r in self.recipients.all():
-            for d in r.gcmdevice_set.all():
-                try:
-                    d.send_message(self.creator.first_name + " has invited you to their meeting", title=self.meeting.name, extra=data)
-                except HTTPError as e:
-                    logger.debug(str(e))
-                count += 1
-        logger.debug("MeetingInvitation.broadcast: " + str(self.recipients.count()) + " recipients " + str(count) + " devices")
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            self.title = self.meeting.course.short_name + " - " + self.meeting.name
+        super().save(*args, **kwargs)
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = MEETING_NOTIFICATION
+        self.data["meeting_id"] = self.meeting.pk
+        self.data["course_short_name"] = self.meeting.course.short_name
 
 
-class MeetingProposal(models.Model):
-    meeting = models.ForeignKey(Meeting, related_name="proposals", on_delete=models.CASCADE, editable=False)
+class MeetingInvitation(MeetingNotification):
+
+    class Meta:
+        ordering = ('meeting__course', 'meeting', '-pk')  # TODO: inherited automatically?
+
+    def __str__(self):
+        return 'Meeting ' + str(self.meeting.pk) + ' - Invitation ' + str(self.pk) + ' - ' + str(self.timestamp)  # TODO
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            self.title = self.meeting.course.short_name + " - Meeting Invitation"
+            self.message = self.creator.first_name + " has invited you to their meeting"
+            self.message_expanded = self.message + "\n\nName: " + self.meeting.name + "\nLocation: " + self.meeting.location + "\nStart Date: " + str(self.meeting.start_date) + "\nStart Time: " + str(self.meeting.start_time) + "\nDuration: " + str(self.meeting.duration_minutes) + "\nDescription: " + self.meeting.description
+        super().save(*args, **kwargs)
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = MEETING_INVITATION
+
+
+class MeetingProposal(MeetingNotification):  # TODO: disallow deletes
     location = models.CharField(max_length=50)
     start_date = models.DateField(blank=True)
     start_time = models.TimeField(blank=True)
-    creator = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="meeting_proposals", blank=True, null=True, on_delete=models.SET_NULL, editable=False)
-    timestamp = models.DateTimeField(auto_now_add=True, editable=False)
     responses_received = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="meeting_proposals_responses_received", blank=True, editable=False)
     expiration_minutes = models.PositiveIntegerField(default=60, blank=True)  # expires in 1 hr by default TODO allow user to set?
     applied = models.BooleanField(default=False, blank=True, editable=False)
     closed = models.BooleanField(default=False, blank=True, editable=False)
 
-    objects = GetOrNoneManager()
-
-    class Meta:
-        ordering = ('meeting__course', 'meeting', '-pk')
-
     def __str__(self):
-        return 'Meeting ' + self.meeting.pk + ' - Proposal ' + self.pk + ' - ' + self.timestamp
+        return 'Meeting ' + self.meeting.pk + ' - Proposal ' + self.pk + ' - ' + str(self.timestamp)  # TODO
 
     @property
     def is_expired(self):
-        return self.timestamp + timedelta(minutes=self.expiration_minutes) < timezone.now()
+        return (self.timestamp + timedelta(minutes=self.expiration_minutes)) < timezone.now()
 
     @property
     def is_closed(self):
@@ -429,7 +464,16 @@ class MeetingProposal(models.Model):
                 self.start_date = self.meeting.start_date
             if not self.start_time:
                 self.start_time = self.meeting.start_time
-        super(MeetingProposal, self).save(*args, **kwargs)
+            self.message = self.creator.first_name + " has proposed a time/location change"
+            self.message_expanded = self.message + "\n\nFrom:\n" +  self.meeting.location + "\n" + str(self.meeting.start_date) + " " + str(self.meeting.start_time) + "\n\nTo:\n" +  self.location + "\n" + str(self.start_date) + " " + str(self.start_time)
+        super().save(*args, **kwargs)
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = MEETING_PROPOSAL
+        self.data["location"] = self.location
+        self.data["start_date"] = str(self.start_date)
+        self.data["start_time"] = str(self.start_time)
 
     def approve_by(self, user):
         if not self.closed:
@@ -457,61 +501,46 @@ class MeetingProposal(models.Model):
     def close(self):
         self.closed = True
         self.save()
-        self.broadcast_result()
-
-    def broadcast_result(self):
-        if self.applied:
-            message = "Meeting time/location has been changed"
-        else:
-            message = "Proposal for new meeting time/location has been rejected"
-        data = {
-            "type": MEETING_PROPOSAL_RESULT,
-            "id": self.pk,
-            "meeting_id": self.meeting.pk,
-            "location": self.location,
-            "start_date": str(self.start_date),
-            "start_time": str(self.start_time),
-            "applied": self.applied,
-            "course_short_name": self.meeting.course.short_name,
-            "creator_first_name": self.creator.first_name,
-        }
-        count = 0
-        for m in self.meeting.members.all():
-            for d in m.gcmdevice_set.all():
-                try:
-                    d.send_message(message, title=self.meeting.name, extra=data)
-                except HTTPError as e:
-                    logger.debug(str(e))
-                count += 1
-        logger.debug("MeetingProposal.broadcast_result: " + str(self.meeting.members.count()) + " recipients " + str(count) + " devices")
-
-    def broadcast(self):
-        data = {
-            "type": MEETING_PROPOSAL,
-            "id": self.pk,
-            "meeting_id": self.meeting.pk,
-            "location": self.location,
-            "start_date": str(self.start_date),
-            "start_time": str(self.start_time),
-            "course_short_name": self.meeting.course.short_name,
-            "creator_first_name": self.creator.first_name
-        }
-        count = 0
-        for m in self.meeting.members.all():
-            if m.pk != self.creator.pk:  # TODO: don't send notification to creator
-                for d in m.gcmdevice_set.all():
-                    try:
-                        d.send_message(self.creator.first_name + " wants to change meeting details", title=self.meeting.name, extra=data)
-                    except HTTPError as e:
-                        logger.debug(str(e))
-                    count += 1
-                    logger.debug(
-                        "MeetingProposal.broadcast: " + str(self.meeting.members.count()) + " recipients " + str(count) + " devices")
+        MeetingProposalResult.objects.create(meeting_proposal=self)
 
 
 @receiver(post_save, sender=MeetingProposal)
-def send_meeting_proposals(sender, instance=None, created=False, **kwargs):
+def dispatch_meeting_proposals(sender, instance=None, created=False, **kwargs):
     if created:
+        instance.recipients = instance.meeting.members.all()
+        instance.recipients.remove(instance.creator)  # TODO: don't send notification to creator
+        instance.broadcast()
+
+
+class MeetingProposalResult(MeetingNotification):  # TODO: disallow deletes
+    meeting_proposal = models.OneToOneField(MeetingProposal, related_name="result", on_delete=models.CASCADE, editable=False)
+
+    def __str__(self):
+        return 'Meeting ' + self.meeting.pk + ' - Proposal Result ' + self.pk + ' - ' + str(self.timestamp)
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:
+            if self.meeting_proposal.applied:
+                self.message = "Meeting time/location has been changed"
+                self.message_expanded = self.message + "\n\n" +  self.meeting.location + "\n" + str(self.meeting.start_date) + " " + str(self.meeting.start_time)
+            else:
+                self.message = "Proposal for new meeting time/location has been rejected"
+                self.message_expanded = self.message
+        super().save(*args, **kwargs)
+
+    def set_data(self):
+        super().set_data()
+        self.data["type"] = MEETING_PROPOSAL_RESULT
+        self.data["meeting_proposal_id"] = self.meeting_proposal.pk
+        self.data["location"] = self.meeting_proposal.location
+        self.data["start_date"] = str(self.meeting_proposal.start_date)
+        self.data["start_time"] = str(self.meeting_proposal.start_time)
+
+
+@receiver(post_save, sender=MeetingProposalResult)
+def send_meeting_proposal_results(sender, instance=None, created=False, **kwargs):
+    if created:
+        instance.recipients = instance.meeting.members.all()  # TODO: DO send notification to creator
         instance.broadcast()
 
 

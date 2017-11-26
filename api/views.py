@@ -89,6 +89,16 @@ class GroupMessageFilter(filters.FilterSet):
         fields = ('content', 'group', 'creator', 'timestamp', 'timestamp__lt', 'timestamp__lte', 'timestamp__gt', 'timestamp__gte')
 
 
+# ~~~~~~~~ Helper ~~~~~~~~ #
+
+
+def is_notification_recipient(notification, user):
+    for u in notification.recipients.all():
+        if u.pk == user.pk:
+            return True
+    return False
+
+
 # ~~~~~~~~ ViewSets ~~~~~~~~ #
 
 
@@ -203,28 +213,138 @@ class MeetingViewSet(ModelViewSet):
         return Response(self.get_serializer(instance).data)
 
 
+class StandardNotificationViewSet(ModelViewSet):
+    serializer_class = StandardNotificationSerializer
+    queryset = StandardNotification.objects.all()
+    ordering = ('-pk',)
+    search_fields = ()  # TODO
+    filter_fields = '__all__'
+    ordering_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class GroupNotificationViewSet(ModelViewSet):
+    serializer_class = GroupNotificationSerializer
+    queryset = GroupNotification.objects.all()
+    ordering = ('-pk',)
+    search_fields = ()  # TODO
+    filter_fields = '__all__'
+    ordering_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class MeetingNotificationViewSet(ModelViewSet):
+    serializer_class = MeetingNotificationSerializer
+    queryset = MeetingNotification.objects.all()
+    ordering = ('-pk',)
+    search_fields = ()  # TODO
+    filter_fields = '__all__'
+    ordering_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class GroupInvitationViewSet(ModelViewSet):
+    serializer_class = GroupInvitationSerializer
+    queryset = GroupInvitation.objects.all()
+    ordering = ('-pk',)
+    search_fields = ()  # TODO
+    filter_fields = '__all__'
+    ordering_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class MeetingInvitationViewSet(ModelViewSet):
+    serializer_class = MeetingInvitationSerializer
+    queryset = MeetingInvitation.objects.all()
+    ordering = ('-pk',)
+    search_fields = ()  # TODO
+    filter_fields = '__all__'
+    ordering_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
 class MeetingProposalViewSet(ModelViewSet):
     serializer_class = MeetingProposalSerializer
     queryset = MeetingProposal.objects.all()
     ordering = ('meeting__course', 'meeting', '-pk')
-    # search_fields = None # TODO
+    search_fields = ()  # TODO
     ordering_fields = '__all__'
     filter_fields = '__all__'
 
     @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+    @detail_route(methods=['post'])
     def approve(self, request, pk=None):
         instance = self.get_object()
-        if not request.user.meetings_as_member.filter(pk=instance.meeting.pk):  # TODO: put in approve_by() function?
-            return Response("Must be meeting member", status=status.HTTP_403_FORBIDDEN)
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
         instance.approve_by(request.user)
         return Response(self.get_serializer(instance).data)
 
     @detail_route(methods=['post'])
     def reject(self, request, pk=None):
         instance = self.get_object()
-        if not request.user.meetings_as_member.filter(pk=instance.meeting.pk):  # TODO: put in approve_by() function?
-            return Response("Must be meeting member", status=status.HTTP_403_FORBIDDEN)
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
         instance.reject_by(request.user)
+        return Response(self.get_serializer(instance).data)
+
+
+class MeetingProposalResultViewSet(ReadOnlyModelViewSet):
+    serializer_class = MeetingProposalResultSerializer
+    queryset = MeetingProposalResult.objects.all()
+    ordering = ('meeting__course', 'meeting', '-pk')
+    search_fields = ()  # TODO
+    ordering_fields = '__all__'
+    filter_fields = '__all__'
+
+    @detail_route(methods=['post'])
+    def read_by(self, request, pk=None):
+        instance = self.get_object()
+        if not is_notification_recipient(instance, request.user):
+            return Response("Must be notification recipient", status=status.HTTP_403_FORBIDDEN)
+        instance.read_by(request.user)
         return Response(self.get_serializer(instance).data)
 
 
