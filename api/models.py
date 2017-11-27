@@ -309,9 +309,6 @@ class Notification(models.Model):
 
     objects = GetOrNoneManager()
 
-    class Meta:
-        abstract = True
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data = {}
@@ -501,7 +498,7 @@ class MeetingProposal(MeetingNotification):  # TODO: disallow deletes
     def close(self):
         self.closed = True
         self.save()
-        MeetingProposalResult.objects.create(meeting_proposal=self)
+        MeetingProposalResult.objects.create(meeting_proposal=self, meeting=self.meeting, creator=self.creator)
 
 
 @receiver(post_save, sender=MeetingProposal)
