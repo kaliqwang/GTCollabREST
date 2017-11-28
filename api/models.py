@@ -604,3 +604,5 @@ class ServerState(SingletonModel):
         self.subjects_status = state
         self.courses_status = state
         self.save()
+
+# arbitrary change TODO: remove
